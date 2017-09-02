@@ -4,7 +4,7 @@ import traceback
 
 from discord.ext import commands
 
-from mochov.config.config import Config
+from config.config import Config
 
 logger = logging.getLogger("discord")
 logger.setLevel(logging.INFO)
