@@ -1,11 +1,12 @@
 import random
 import string
 import time
-from mochov.utils.context_managers import Typing
 
 import discord
 from discord.ext import commands
 from markov.markov import Markov, EmptyModelError
+
+from .utils.context_managers import Typing
 
 
 def setup(bot):
