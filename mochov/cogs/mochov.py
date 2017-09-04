@@ -1,8 +1,9 @@
+import random
 import string
 import time
+from mochov.utils.context_managers import Typing
 
 import discord
-import random
 from discord.ext import commands
 from markov.markov import Markov, EmptyModelError
 
@@ -41,34 +42,35 @@ class Mochov:
 
     @commands.command(pass_context=True, aliases=["gen", "g"])
     async def generate(self, ctx, member: discord.Member, *start_text):
+        async with Typing(self.bot):
+            if member is None:
+                member = ctx.message.author
 
-        if member is None:
-            member = ctx.message.author
+            try:
+                message = self.generate_message(member, start_text)
+            except EmptyModelError:
+                await self.bot.say("Not enough data for {}".format(member))
+            else:
+                await self.bot.say(message)
 
-        try:
-            message = self.generate_message(member, start_text)
-        except EmptyModelError:
-            await self.bot.say("Not enough data for {}".format(member))
-        else:
-            await self.bot.say(message)
-
-    def generate_message(self, member, start_text=None):
+    def generate_message(self, member, start_text=None, num_sentences=random.randint(1, 10),
+                         words_per_sentence=random.randint(1, 10)):
         if member.id not in self.models:
             self.models[member.id] = Markov(prefix=member.id)
 
         sentences = []
-        while len(sentences) < random.randint(1, 10):
+        while len(sentences) < num_sentences:
             if start_text and not sentences:
                 sentence = self.models[member.id].generate(max_words=100, seed=list(start_text))
             else:
                 sentence = []
-                while len(sentence) < random.randint(1, 10):
+                while len(sentence) < words_per_sentence:
                     sentence += self.models[member.id].generate(max_words=100)
             sentences.append(sentence)
         message = ""
         for sentence in sentences:
             message += " ".join(sentence)
-            if sentence[-1][-1] not in string.punctuation:
+            if sentence and sentence[-1] and sentence[-1][-1] not in string.punctuation:
                 message += ". "
         return message
 
@@ -81,27 +83,29 @@ class Mochov:
 
     @commands.command(pass_context=True, aliases=["rand", "r"])
     async def random(self, ctx):
-        rand_members = list(ctx.message.channel.server.members)
-        random.shuffle(rand_members)
-        rand_member = None
+        async with Typing(self.bot):
+            rand_members = list(ctx.message.channel.server.members)
+            random.shuffle(rand_members)
+            rand_member = None
 
-        message = None
-        for member in rand_members:
-            try:
-                message = self.generate_message(member)
-            except EmptyModelError:
-                continue
-            else:
-                rand_member = member
+            message = None
+            for member in rand_members:
+                try:
+                    message = self.generate_message(member, num_sentences=random.randint(1, 3),
+                                                    words_per_sentence=random.randint(5, 10))
+                except EmptyModelError:
+                    continue
+                else:
+                    rand_member = member
 
-        if not message:
-            await self.bot.say(
-                "Not enough data for users in this channel. Try running {prefix}store_history first.".format(
-                    prefix=self.bot.command_prefix))
+            if not message:
+                await self.bot.say(
+                    "Not enough data for users in this channel. Try running {prefix}store_history first.".format(
+                        prefix=self.bot.command_prefix))
 
-        await self.bot.say("\"{}\"".format(message))
-        await self.bot.say("Use {prefix}guess <member> to guess who the quote above is mimicking.".format(
-            prefix=self.bot.command_prefix))
+            await self.bot.say("\"{}\"".format(message))
+            await self.bot.say("Use {prefix}guess <member> to guess who the quote above is mimicking.".format(
+                prefix=self.bot.command_prefix))
 
         tries = 3
         timeout = 120
@@ -142,12 +146,13 @@ class Mochov:
     @commands.command(pass_context=True)
     @commands.check(check_manage_server_permission)
     async def store_history(self, ctx, num_messages: int, member: discord.Member = None):
-        counter = 0
-        async for message in self.bot.logs_from(ctx.message.channel, limit=num_messages):
-            if not member or message.author == member:
-                counter += 1
-                self.store_message(message)
-        await self.bot.say("Successfully stored {:d} messages".format(counter))
+        async with Typing(self.bot):
+            counter = 0
+            async for message in self.bot.logs_from(ctx.message.channel, limit=num_messages):
+                if not member or message.author == member:
+                    counter += 1
+                    self.store_message(message)
+            await self.bot.say("Successfully stored {:d} messages".format(counter))
 
     @commands.command(pass_context=True)
     @commands.check(check_manage_server_permission)
